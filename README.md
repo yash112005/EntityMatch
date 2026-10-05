@@ -2,86 +2,85 @@
 
 ## Overview
 
-Large-scale commercial platforms mein business identity data multiple independent 
-sources se aata hai — har source thoda noisy aur inconsistent format mein data 
-deta hai. Ye project solve karta hai **Entity Resolution** problem: business 
-records ke 3 alag sources se, pata lagana ki kaunse records asal mein ek hi 
-real-world business entity ko represent karte hain.
+In large-scale commercial platforms, business identity data arrives from multiple 
+independent sources — each contributing partial, noisy fragments about the same 
+real-world entities. This project solves the **Entity Resolution** problem: given 
+business records from 3 independent sources, determine which records across 
+sources refer to the same real-world business entity.
 
 **Final F0.5 Score (local validation): 0.8875**
 
 ## Problem Statement
 
-- **Source 1**: Deduplicated reference source — har entity ke liye match dhoondhna hai
-- **Source 2 & 3**: Candidate sources — inme se matching records dhoondhne hain
-- Ek Source 1 entity ka Source 2/3 mein **zero, one, ya multiple** matches ho sakte hain
-- Data mein noise: name abbreviations (Corp/Corporation, Pvt/Private), legal suffix 
-  inconsistencies, typos, word-order variations, incomplete addresses, landmark-based 
-  address references
-- **Scale**: Source 1 ~22 lakh records, Source 2 ~50 lakh records, Source 3 ~52 lakh 
-  records — total ~1.25 crore business records
+- **Source 1**: Deduplicated reference source — find matches for every entity here
+- **Source 2 & 3**: Candidate sources — matching records need to be found in these
+- A Source 1 entity may have **zero, one, or many** matches in Source 2/3
+- Noisy data patterns: name abbreviations (Corp/Corporation, Pvt/Private), legal 
+  suffix inconsistencies, typos, word-order transpositions, incomplete addresses, 
+  landmark-based address references
+- **Scale**: Source 1 ~2.2M records, Source 2 ~5M records, Source 3 ~5.2M records — 
+  roughly 12.5 million business records in total
 
 ## Evaluation Metric
 
-**F0.5 Score** (precision-weighted F-beta score) — false merges (do different 
-businesses ko ek bata dena) ko false negatives (match miss karna) se **2x zyada 
-penalize** karta hai. Isliye poore pipeline mein priority rahi: confident matches 
-hi final list mein rakho, ambiguous cases ko khali chhodo.
+**F0.5 Score** (precision-weighted F-beta score) — penalizes false merges (incorrectly 
+matching two different businesses) **2x harder** than missed matches (false negatives). 
+This shaped the entire pipeline's priority: only commit to confident matches, and 
+leave ambiguous cases unmatched rather than risk a false merge.
+
 
 
 ## Approach — Two-Stage Pipeline
 
-Itne bade scale (1.25 crore+ records) pe brute-force comparison (har record ko 
-har doosre record se compare karna) practically impossible hai. Isliye kaam ko 
-2 stages mein divide kiya:
+At this scale (12.5M+ records), brute-force comparison (checking every record 
+against every other record) is computationally infeasible. The problem was 
+therefore split into two stages:
 
 ### Stage 1 — Blocking / Candidate Generation
-**File: `dataset_analysis_partA.ipynb`** (Candidate Generation)
+**File: `candidate_generation.py`**
 
-- Text cleaning: naam/address lowercase, symbols hatana, extra spaces normalize karna
-- Generic/stopword filtering: "Ltd", "Inc", "and", "Private" jaise common words ko 
-  blocking key se exclude kiya — warna ye words single giant blocks (97,000+ records 
-  tak) bana rahe the
-- Blocking key: country + naam ka sabse significant word (alphabetically sorted, 
-  stopwords aur chhote words exclude karke)
-- Normal-size blocks: simple dictionary/groupby lookup se candidates nikale
-- Oversized blocks (>3000 records): TF-IDF (character n-grams, 2-4 length) + 
-  Nearest Neighbors (cosine similarity) se sirf us block ke andar re-ranking, 
-  taaki poore dataset pe TF-IDF na chalana pade
-- Output: `candidate_pairs.tsv` — har Source 1 entity ke liye uske top candidates
+- Text cleaning: lowercased names/addresses, stripped symbols, normalized whitespace
+- Stopword filtering: excluded generic terms ("Ltd", "Inc", "and", "Private") from 
+  the blocking key — without this, these words were collapsing records into single 
+  giant blocks (97,000+ records in some cases)
+- Blocking key: country + the most significant word in the business name 
+  (alphabetically sorted, stopwords and short words excluded)
+- Normal-sized blocks: resolved via a simple dictionary/groupby lookup
+- Oversized blocks (>3,000 records): re-ranked using TF-IDF (character n-grams, 
+  length 2-4) + Nearest Neighbors (cosine similarity), scoped only to that block 
+  — avoiding a full-dataset TF-IDF pass
+- Output: `candidate_pairs.tsv` — top candidate matches for every Source 1 entity
 
 ### Stage 2 — Matching Model
-**File: `model_train1.ipynb`**
+**File: `model_train.ipynb`**
 
-- Candidate pairs pe similarity features banaye (RapidFuzz library se):
+- Engineered similarity features on candidate pairs (via RapidFuzz):
   - Name similarity: ratio, token-sort-ratio, token-set-ratio, partial-ratio
-  - Address similarity: same metrics
+  - Address similarity: same set of metrics
   - Length differences, country match
-- Classifier: **LightGBM** (gradient boosting) — bade data pe efficient, class 
-  imbalance handle karne ke liye `is_unbalance=True`
-- Threshold tuning: F0.5 metric ko directly optimize karne ke liye decision 
-  threshold ko high rakha (precision-priority), kyunki false merge zyada costly hai
+- Classifier: **LightGBM** (gradient boosting) — efficient at this data scale, 
+  with `is_unbalance=True` to handle class imbalance
+- Threshold tuning: decision threshold tuned high (precision-favoring) to directly 
+  optimize for F0.5, since a false merge is costlier than a missed match
 
 ### End-to-End Pipeline
-**File: `main.ipynb`** — poora flow raw data se final predictions tak
+**File: `main.ipynb`** — runs the complete flow from raw data to final predictions
 
 ## Engineering Challenges Solved
 
-Is scale ke data ke saath kaam karte waqt, pure ML se zyada **data engineering** 
-challenges aaye:
+At this data scale, the harder problems were in data engineering, not modeling:
 
-- **Memory management**: 50+ lakh row files load karte waqt MemoryError — fix kiya 
-  chunked reading (`chunksize` parameter) aur dtype optimization (`category` dtype) se
-- **Checkpoint/Resume system**: Oversized block processing ghanton le sakta tha; 
-  agar session crash ho (jo Colab mein common hai), progress khona bahut costly 
-  hota. Isliye batch-wise checkpointing implement kiya — har batch ke baad progress 
-  disk pe save, crash hone pe wahi se resume
-- **I/O optimization**: Har block ke liye poori 1 crore+ row file dobara padhna 
-  bahut slow tha — batch processing (10 blocks ek saath) se file-reading 10x kam 
-  ki gayi
-- **Data integrity debugging**: Incomplete Google Drive uploads ki wajah se files 
-  silently truncate ho rahi thi (22 lakh rows ki jagah 1.3 lakh load ho rahi thi) — 
-  systematic debugging se root-cause pakda aur fix kiya
+- **Memory management**: Loading 5M+ row files triggered MemoryErrors — resolved 
+  via chunked reading (`chunksize`) and dtype optimization (`category` dtype)
+- **Checkpoint/resume system**: Oversized-block processing could take hours; losing 
+  progress to a session crash (common on Colab) was costly. Implemented batch-wise 
+  checkpointing — progress saved to disk after every batch, resumable from the 
+  last completed batch on crash
+- **I/O optimization**: Re-reading the full 12.5M+ row files for every single block 
+  was too slow — batching 10 blocks per file-read pass cut file-reading by 10x
+- **Data integrity debugging**: Incomplete Google Drive uploads were silently 
+  truncating files (a 2.2M-row file was loading as 132K rows) — root-caused and 
+  fixed through systematic verification at each pipeline stage
 
 ## Results
 
@@ -108,7 +107,6 @@ challenges aaye:
 
 **Development environment:** Google Colab / VS Code  
 
-
 ## Dataset
 
 This project uses the dataset provided exclusively to registered participants 
@@ -125,21 +123,28 @@ the following schema:
 - `source1_entity_id`, `matched_entity_ids` (ground truth)
 
 ## How to Run
-
-1. Dependencies install karo: `pip install pandas numpy scikit-learn lightgbm rapidfuzz`
-2. `python candidate_generation.py` chalao — `candidate_pairs.tsv` generate hoga
-3. `model_train.ipynb` chalao — model train hoga aur final predictions banenge
-4. Pura flow ek saath dekhne ke liye `main.ipynb` chalao
+1. Install dependencies: `pip install pandas numpy scikit-learn lightgbm rapidfuzz`
+2. Run `python candidate_generation.py` — generates `candidate_pairs.tsv`
+3. Run `model_train.ipynb` — trains the model and produces final predictions
+4. Run `main.ipynb` to see the complete pipeline end-to-end
 
 ## Key Learnings
 
-Real-world, large-scale ML problems mein model training sirf ek hissa hai — 
-poora kaam ka bada hissa (shayad 60-70%) **data engineering** hota hai: memory-safe 
-processing, crash-resilient pipelines, aur efficient I/O. Ye project isi balance 
-ko practically demonstrate karta hai.
+In real-world, large-scale ML problems, model training is only one part of the 
+work — a significant share (arguably 60-70%) is data engineering: memory-safe 
+processing, crash-resilient pipelines, and efficient I/O. This project was built 
+to demonstrate exactly that balance.
 
 ## Note
 
-The score reported here is based on local validation. Official competition 
-submission was not completed before the deadline, but the full pipeline was 
-built end-to-end for learning and skill development purposes.
+The reported score is based on local validation. Official competition submission 
+wasn't completed before the deadline, but the full pipeline was built end-to-end 
+for learning and portfolio purposes.
+
+
+
+
+
+
+
+
