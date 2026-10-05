@@ -1,5 +1,11 @@
 # Amazon ML Challenge 2026 — Business Entity Resolution
 
+## Author
+
+**Yash Namdeo** — AI/ML Engineer
+- GitHub: [@yash112005](https://github.com/yash112005)
+- LinkedIn: [www.linkedin.com/in/yash-namdeo-48412531a]
+  
 ## Overview
 
 In large-scale commercial platforms, business identity data arrives from multiple 
@@ -134,6 +140,12 @@ In real-world, large-scale ML problems, model training is only one part of the
 work — a significant share (arguably 60-70%) is data engineering: memory-safe 
 processing, crash-resilient pipelines, and efficient I/O. This project was built 
 to demonstrate exactly that balance.
+
+## Future Improvements
+
+- Multiple blocking keys (first-word + last-word combination) to improve recall further
+- Ensemble of LightGBM + XGBoost for more robust predictions
+- Hyperparameter tuning via Optuna for the matching model
 
 ## Note
 
