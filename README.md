@@ -37,7 +37,7 @@ against every other record) is computationally infeasible. The problem was
 therefore split into two stages:
 
 ### Stage 1 — Blocking / Candidate Generation
-**File: `candidate_generation.py`**
+**File: `dataset_analysis_partA.ipynb`** (Candidate Generation)
 
 - Text cleaning: lowercased names/addresses, stripped symbols, normalized whitespace
 - Stopword filtering: excluded generic terms ("Ltd", "Inc", "and", "Private") from 
