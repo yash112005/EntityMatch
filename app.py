@@ -1,7 +1,7 @@
 import pickle
 from pathlib import Path
 
-import gradio as gr
+import streamlit as st
 from rapidfuzz import fuzz
 
 # ---------------------------------------------------------------
@@ -11,30 +11,30 @@ MODEL_PATH = Path(__file__).parent / "entity_match_model.pkl"
 THRESHOLD = 0.7
 
 # Training me jo 10th feature tha uski value yahan daalo.
-# Agar wo real feature tha (e.g. same-city flag), use properly compute karo.
 LAST_FEATURE_DEFAULT = 1
 
-# ---------------------------------------------------------------
-# Model load (ek hi baar, startup pe)
-# ---------------------------------------------------------------
-if not MODEL_PATH.exists():
-    raise FileNotFoundError(
-        f"Model file not found at {MODEL_PATH}. "
-        "Check ki .pkl repo me commit hui hai aur .gitignore me nahi hai."
-    )
+st.set_page_config(page_title="Business Entity Resolution", page_icon="🔍")
 
-with open(MODEL_PATH, "rb") as f:
-    model = pickle.load(f)
+
+# ---------------------------------------------------------------
+# Model load (cached)
+# ---------------------------------------------------------------
+@st.cache_resource
+def load_model():
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(f"Model file not found: {MODEL_PATH}")
+    with open(MODEL_PATH, "rb") as f:
+        return pickle.load(f)
+
+
+model = load_model()
 
 
 # ---------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------
 def norm(s) -> str:
-    """Lowercase + extra spaces hatao.
-    IMPORTANT: training me jo normalization kiya tha, bilkul wahi yahan rakho.
-    Agar training me lowercase nahi kiya tha, to .lower() hata do.
-    """
+    """Training wali normalization hi use karo."""
     return " ".join(str(s or "").lower().split())
 
 
@@ -54,52 +54,40 @@ def build_features(name1, addr1, name2, addr2):
 
 
 def predict_prob(features) -> float:
-    # sklearn wrapper (LGBMClassifier etc.)
     if hasattr(model, "predict_proba"):
         return float(model.predict_proba(features)[0][1])
-    # raw lgb.Booster: predict() binary me seedha probability deta hai
-    return float(model.predict(features)[0])
-
-
-# ---------------------------------------------------------------
-# Main function
-# ---------------------------------------------------------------
-def check_match(name1, addr1, name2, addr2):
-    if not str(name1 or "").strip() or not str(name2 or "").strip():
-        return "⚠️ Please enter both business names."
-
-    name1, addr1, name2, addr2 = map(norm, (name1, addr1, name2, addr2))
-
-    try:
-        features = build_features(name1, addr1, name2, addr2)
-        prob = predict_prob(features)
-    except Exception as e:
-        return f"⚠️ Prediction failed: {type(e).__name__}: {e}"
-
-    if prob >= THRESHOLD:
-        return f"✅ Likely MATCH — Match probability: {prob:.1%}"
-    return f"❌ Likely NOT a match — Match probability: {prob:.1%}"
+    return float(model.predict(features)[0])  # raw lgb.Booster
 
 
 # ---------------------------------------------------------------
 # UI
 # ---------------------------------------------------------------
-demo = gr.Interface(
-    fn=check_match,
-    inputs=[
-        gr.Textbox(label="Business Name 1", value="Sharma Sweets Pvt Ltd"),
-        gr.Textbox(label="Address 1", value="123 Main St, Mumbai"),
-        gr.Textbox(label="Business Name 2", value="Sharma Sweets Private Limited"),
-        gr.Textbox(label="Address 2", value="123 Main Street, Mumbai"),
-    ],
-    outputs=gr.Textbox(label="Result"),
-    title="🔍 Business Entity Resolution",
-    description=(
-        "Check if two business records refer to the same real-world business — "
-        "built for Amazon ML Challenge 2026."
-    ),
-    flagging_mode="never",
+st.title("🔍 Business Entity Resolution")
+st.caption(
+    "Check if two business records refer to the same real-world business — "
+    "built for Amazon ML Challenge 2026."
 )
 
-if __name__ == "__main__":
-    demo.launch()
+col1, col2 = st.columns(2)
+with col1:
+    name1 = st.text_input("Business Name 1", "Sharma Sweets Pvt Ltd")
+    addr1 = st.text_input("Address 1", "123 Main St, Mumbai")
+with col2:
+    name2 = st.text_input("Business Name 2", "Sharma Sweets Private Limited")
+    addr2 = st.text_input("Address 2", "123 Main Street, Mumbai")
+
+if st.button("Check match", type="primary"):
+    if not name1.strip() or not name2.strip():
+        st.warning("Please enter both business names.")
+    else:
+        try:
+            n1, a1, n2, a2 = map(norm, (name1, addr1, name2, addr2))
+            prob = predict_prob(build_features(n1, a1, n2, a2))
+        except Exception as e:
+            st.error(f"Prediction failed: {type(e).__name__}: {e}")
+        else:
+            if prob >= THRESHOLD:
+                st.success(f"✅ Likely MATCH — Match probability: {prob:.1%}")
+            else:
+                st.error(f"❌ Likely NOT a match — Match probability: {prob:.1%}")
+            st.progress(min(max(prob, 0.0), 1.0))
