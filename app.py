@@ -76,23 +76,25 @@ with col2:
 if st.button("Check match", type="primary"):
     if not name1.strip() or not name2.strip():
         st.warning("Please enter both business names.")
-    else:
-        n1, a1, n2, a2 = map(norm, (name1, addr1, name2, addr2))
-        features = build_features(n1, a1, n2, a2)
+        st.stop()
 
-        if len(features[0]) != model.num_feature():
-            st.error(
-                f"Feature mismatch: app gives {len(features[0])} features, "
-                f"model expects {model.num_feature()}. "
-                "Model info (debug) me feature names dekho aur build_features() update karo."
-            )
-        else:
-            prob = float(model.predict(features)[0])
-            if prob >= THRESHOLD:
-                st.success(f"✅ Likely MATCH — Match probability: {prob:.1%}")
-            else:
-                st.error(f"❌ Likely NOT a match — Match probability: {prob:.1%}")
-            st.progress(min(max(prob, 0.0), 1.0))
+    n1, a1, n2, a2 = map(norm, (name1, addr1, name2, addr2))
+    features = build_features(n1, a1, n2, a2)
+
+    if len(features[0]) != model.num_feature():
+        st.error(
+            f"Feature mismatch: app gives {len(features[0])} features, "
+            f"model expects {model.num_feature()}. "
+            "Model info (debug) me feature names dekho aur build_features() update karo."
+        )
+        st.stop()
+
+    prob = float(model.predict(features)[0])
+    if prob >= THRESHOLD:
+        st.success(f"✅ Likely MATCH — Match probability: {prob:.1%}")
+    else:
+        st.error(f"❌ Likely NOT a match — Match probability: {prob:.1%}")
+    st.progress(min(max(prob, 0.0), 1.0))
             else:
                 st.error(f"❌ Likely NOT a match — Match probability: {prob:.1%}")
             st.progress(min(max(prob, 0.0), 1.0))
