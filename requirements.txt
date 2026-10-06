@@ -1,5 +1,5 @@
 streamlit
-lightgbm==4.7.0
 rapidfuzz
-pandas
+scikit-learn==<training wala version>
+lightgbm==<training wala version>
 numpy
