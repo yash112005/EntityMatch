@@ -4,19 +4,12 @@ import lightgbm as lgb
 import streamlit as st
 from rapidfuzz import fuzz
 
-# ---------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------
-# Repo me jo txt model hai (app.py ke saath same folder)
 MODEL_PATH = Path(__file__).parent / "entity_match_lightgbm.txt"
 THRESHOLD = 0.7
 
 st.set_page_config(page_title="Business Entity Resolution", page_icon="🔍")
 
 
-# ---------------------------------------------------------------
-# Model load (cached)
-# ---------------------------------------------------------------
 @st.cache_resource
 def load_model():
     if not MODEL_PATH.exists():
@@ -27,18 +20,12 @@ def load_model():
 model = load_model()
 
 
-# ---------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------
 def norm(s) -> str:
-    """Training wali normalization hi use karo."""
     return " ".join(str(s or "").lower().split())
 
 
 def build_features(name1, addr1, name2, addr2):
-    # NOTE: ye list training ke features se EXACT match honi chahiye
-    # (same order, same count). Model me kitne features hain neeche
-    # app me dikhaya jata hai.
+    # Training ke features se exact match hona chahiye (count + order)
     return [[
         fuzz.ratio(name1, name2),
         fuzz.token_sort_ratio(name1, name2),
@@ -52,9 +39,6 @@ def build_features(name1, addr1, name2, addr2):
     ]]
 
 
-# ---------------------------------------------------------------
-# UI
-# ---------------------------------------------------------------
 st.title("🔍 Business Entity Resolution")
 st.caption(
     "Check if two business records refer to the same real-world business — "
@@ -94,6 +78,7 @@ if st.button("Check match", type="primary"):
         st.success(f"✅ Likely MATCH — Match probability: {prob:.1%}")
     else:
         st.error(f"❌ Likely NOT a match — Match probability: {prob:.1%}")
+    st.progress(min(max(prob, 0.0), 1.0))
     st.progress(min(max(prob, 0.0), 1.0))
             else:
                 st.error(f"❌ Likely NOT a match — Match probability: {prob:.1%}")
