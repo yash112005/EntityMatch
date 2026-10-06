@@ -79,7 +79,3 @@ if st.button("Check match", type="primary"):
     else:
         st.error(f"❌ Likely NOT a match — Match probability: {prob:.1%}")
     st.progress(min(max(prob, 0.0), 1.0))
-    st.progress(min(max(prob, 0.0), 1.0))
-            else:
-                st.error(f"❌ Likely NOT a match — Match probability: {prob:.1%}")
-            st.progress(min(max(prob, 0.0), 1.0))
