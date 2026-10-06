@@ -245,50 +245,6 @@ with col2:
     )
 
 
-# ============================================================
-# EXAMPLE BUTTONS
-# ============================================================
-
-st.markdown("---")
-
-st.subheader("✨ Need an example?")
-
-example_col1, example_col2 = st.columns(2)
-
-with example_col1:
-
-    if st.button(
-        "✅ Try a Match Example",
-        use_container_width=True
-    ):
-
-        st.session_state.name1 = "Sharma Sweets Pvt Ltd"
-        st.session_state.addr1 = "123 Main Street, Mumbai"
-        st.session_state.country1 = "India"
-
-        st.session_state.name2 = "Sharma Sweets Private Limited"
-        st.session_state.addr2 = "123 Main St, Mumbai"
-        st.session_state.country2 = "India"
-
-        st.rerun()
-
-
-with example_col2:
-
-    if st.button(
-        "❌ Try a Different Business Example",
-        use_container_width=True
-    ):
-
-        st.session_state.name1 = "Sharma Sweets Pvt Ltd"
-        st.session_state.addr1 = "123 Main Street, Mumbai"
-        st.session_state.country1 = "India"
-
-        st.session_state.name2 = "Rajesh Electronics Store"
-        st.session_state.addr2 = "45 MG Road, Delhi"
-        st.session_state.country2 = "India"
-
-        st.rerun()
 
 
 # ============================================================
