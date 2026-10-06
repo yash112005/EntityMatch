@@ -1,17 +1,15 @@
-import pickle
 from pathlib import Path
 
+import lightgbm as lgb
 import streamlit as st
 from rapidfuzz import fuzz
 
 # ---------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------
-MODEL_PATH = Path(__file__).parent / "entity_match_model.pkl"
+# Repo me jo txt model hai (app.py ke saath same folder)
+MODEL_PATH = Path(__file__).parent / "entity_match_lightgbm.txt"
 THRESHOLD = 0.7
-
-# Training me jo 10th feature tha uski value yahan daalo.
-LAST_FEATURE_DEFAULT = 1
 
 st.set_page_config(page_title="Business Entity Resolution", page_icon="🔍")
 
@@ -23,8 +21,7 @@ st.set_page_config(page_title="Business Entity Resolution", page_icon="🔍")
 def load_model():
     if not MODEL_PATH.exists():
         raise FileNotFoundError(f"Model file not found: {MODEL_PATH}")
-    with open(MODEL_PATH, "rb") as f:
-        return pickle.load(f)
+    return lgb.Booster(model_file=str(MODEL_PATH))
 
 
 model = load_model()
@@ -39,6 +36,9 @@ def norm(s) -> str:
 
 
 def build_features(name1, addr1, name2, addr2):
+    # NOTE: ye list training ke features se EXACT match honi chahiye
+    # (same order, same count). Model me kitne features hain neeche
+    # app me dikhaya jata hai.
     return [[
         fuzz.ratio(name1, name2),
         fuzz.token_sort_ratio(name1, name2),
@@ -49,14 +49,7 @@ def build_features(name1, addr1, name2, addr2):
         fuzz.partial_ratio(addr1, addr2),
         abs(len(name1) - len(name2)),
         abs(len(addr1) - len(addr2)),
-        LAST_FEATURE_DEFAULT,
     ]]
-
-
-def predict_prob(features) -> float:
-    if hasattr(model, "predict_proba"):
-        return float(model.predict_proba(features)[0][1])
-    return float(model.predict(features)[0])  # raw lgb.Booster
 
 
 # ---------------------------------------------------------------
@@ -67,6 +60,10 @@ st.caption(
     "Check if two business records refer to the same real-world business — "
     "built for Amazon ML Challenge 2026."
 )
+
+with st.expander("Model info (debug)"):
+    st.write("Features expected by model:", model.num_feature())
+    st.write(model.feature_name())
 
 col1, col2 = st.columns(2)
 with col1:
@@ -80,14 +77,22 @@ if st.button("Check match", type="primary"):
     if not name1.strip() or not name2.strip():
         st.warning("Please enter both business names.")
     else:
-        try:
-            n1, a1, n2, a2 = map(norm, (name1, addr1, name2, addr2))
-            prob = predict_prob(build_features(n1, a1, n2, a2))
-        except Exception as e:
-            st.error(f"Prediction failed: {type(e).__name__}: {e}")
+        n1, a1, n2, a2 = map(norm, (name1, addr1, name2, addr2))
+        features = build_features(n1, a1, n2, a2)
+
+        if len(features[0]) != model.num_feature():
+            st.error(
+                f"Feature mismatch: app gives {len(features[0])} features, "
+                f"model expects {model.num_feature()}. "
+                "Model info (debug) me feature names dekho aur build_features() update karo."
+            )
         else:
+            prob = float(model.predict(features)[0])
             if prob >= THRESHOLD:
                 st.success(f"✅ Likely MATCH — Match probability: {prob:.1%}")
+            else:
+                st.error(f"❌ Likely NOT a match — Match probability: {prob:.1%}")
+            st.progress(min(max(prob, 0.0), 1.0))
             else:
                 st.error(f"❌ Likely NOT a match — Match probability: {prob:.1%}")
             st.progress(min(max(prob, 0.0), 1.0))
