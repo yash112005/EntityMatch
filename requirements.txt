@@ -1,5 +1,5 @@
 streamlit
 rapidfuzz
-scikit-learn==<training wala version>
-lightgbm==<training wala version>
+scikit-learn
+lightgbm
 numpy
